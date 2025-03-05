@@ -1,4 +1,5 @@
 let jsonData = {};
+let currentEditModeItem = null;
 
 document.getElementById('jsonFileInput').addEventListener('change', function(event) {
   const file = event.target.files[0];
@@ -40,37 +41,40 @@ function createList(data, parentKey = null) {
     const collapsible = document.createElement('div');
     collapsible.classList.add('collapsible');
     collapsible.textContent = key;
-    collapsible.addEventListener('click', function() {
-      const content = this.nextElementSibling;
-      content.style.display = content.style.display === 'none' ? 'block' : 'none';
+    collapsible.addEventListener('click', function(event) {
+      if (!event.target.classList.contains('button')) {
+        const content = this.nextElementSibling;
+        content.style.display = content.style.display === 'none' ? 'block' : 'none';
+      }
     });
 
     const editTextButton = document.createElement('button');
     editTextButton.textContent = 'Edit Text';
     editTextButton.classList.add('button');
     editTextButton.addEventListener('click', function() {
-      const newKey = prompt('Enter new text:', key);
-      if (newKey && newKey !== key) {
-        data[newKey] = data[key];
-        delete data[key];
-        displayJSON(jsonData, document.getElementById('jsonContainer'));
-      }
+      enableEditTextMode(collapsible, key, data);
     });
 
     const editButton = document.createElement('button');
     editButton.textContent = 'Edit';
     editButton.classList.add('button');
     editButton.addEventListener('click', function() {
-      toggleEditMode(li, data[key]);
+      if (currentEditModeItem) {
+        disableEditMode(currentEditModeItem);
+      }
+      enableEditMode(li, data[key]);
+      currentEditModeItem = li;
     });
 
     const addButton = document.createElement('button');
     addButton.textContent = 'Add Attribute';
     addButton.classList.add('button', 'add');
     addButton.addEventListener('click', function() {
-      data[key] = data[key] || {};
-      data[key]['newAttribute'] = '';
-      displayJSON(jsonData, document.getElementById('jsonContainer'));
+      const newKey = prompt('Enter new attribute name:');
+      if (newKey) {
+        data[newKey] = "";
+        displayJSON(jsonData, document.getElementById('jsonContainer'));
+      }
     });
 
     collapsible.appendChild(editTextButton);
@@ -91,8 +95,36 @@ function createList(data, parentKey = null) {
   return ul;
 }
 
-function toggleEditMode(li, data) {
-  const children = li.querySelector('.content').children;
+function enableEditTextMode(element, key, data) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = key;
+  element.innerHTML = '';
+  element.appendChild(input);
+
+  input.addEventListener('blur', function() {
+    const newKey = input.value.trim();
+    if (newKey && newKey !== key) {
+      data[newKey] = data[key];
+      delete data[key];
+      displayJSON(jsonData, document.getElementById('jsonContainer'));
+    }
+  });
+
+  input.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+      input.blur();
+    }
+  });
+
+  input.focus();
+}
+
+function enableEditMode(li, data) {
+  const content = li.querySelector('.content');
+  content.style.display = 'block'; // Ensure the content is expanded
+
+  const children = content.children;
   for (const child of children) {
     const deleteButton = document.createElement('button');
     deleteButton.textContent = 'Delete';
@@ -119,6 +151,17 @@ function toggleEditMode(li, data) {
         }
       });
       child.querySelector('.collapsible').appendChild(editValueButton);
+    }
+  }
+}
+
+function disableEditMode(li) {
+  const content = li.querySelector('.content');
+  const children = content.children;
+  for (const child of children) {
+    const collapsible = child.querySelector('.collapsible');
+    if (collapsible) {
+      collapsible.querySelectorAll('.button.delete, .button.edit').forEach(button => button.remove());
     }
   }
 }
