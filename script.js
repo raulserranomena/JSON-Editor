@@ -1,5 +1,6 @@
 let jsonData = {};
 let currentEditModeItem = null;
+let originalDataCopy = null;
 
 document.getElementById('jsonFileInput').addEventListener('change', function(event) {
   const file = event.target.files[0];
@@ -41,19 +42,6 @@ function createList(data, parentKey = null) {
     const collapsible = document.createElement('div');
     collapsible.classList.add('collapsible');
     collapsible.textContent = key;
-    collapsible.addEventListener('click', function(event) {
-      if (!event.target.classList.contains('button')) {
-        const content = this.nextElementSibling;
-        content.style.display = content.style.display === 'none' ? 'block' : 'none';
-      }
-    });
-
-    const editTextButton = document.createElement('button');
-    editTextButton.textContent = 'Edit Text';
-    editTextButton.classList.add('button');
-    editTextButton.addEventListener('click', function() {
-      enableEditTextMode(collapsible, key, data);
-    });
 
     const editButton = document.createElement('button');
     editButton.textContent = 'Edit';
@@ -62,24 +50,11 @@ function createList(data, parentKey = null) {
       if (currentEditModeItem) {
         disableEditMode(currentEditModeItem);
       }
-      enableEditMode(li, data[key]);
+      enableEditMode(li, data[key], data);
       currentEditModeItem = li;
     });
 
-    const addButton = document.createElement('button');
-    addButton.textContent = 'Add Attribute';
-    addButton.classList.add('button', 'add');
-    addButton.addEventListener('click', function() {
-      const newKey = prompt('Enter new attribute name:');
-      if (newKey) {
-        data[newKey] = "";
-        displayJSON(jsonData, document.getElementById('jsonContainer'));
-      }
-    });
-
-    collapsible.appendChild(editTextButton);
     collapsible.appendChild(editButton);
-    collapsible.appendChild(addButton);
     li.appendChild(collapsible);
 
     const content = document.createElement('div');
@@ -95,123 +70,156 @@ function createList(data, parentKey = null) {
   return ul;
 }
 
-function enableEditTextMode(element, key, data) {
+function enableEditMode(li, data, parentData) {
+  const collapsible = li.querySelector('.collapsible');
+  const content = li.querySelector('.content');
+  content.style.display = 'block'; // Ensure the content is expanded
+
+  // Hide the "Edit" button
+  collapsible.querySelector('button').style.display = 'none';
+
+  // Create and add new buttons
+  const cancelEditsButton = createButton('Cancel Edits', 'button', () => cancelEdits(li, parentData));
+  const saveEditsButton = createButton('Save Edits', 'button', () => saveEdits(li, parentData));
+  const updateTextButton = createButton('Update Text', 'button', () => enableUpdateTextMode(collapsible, data, parentData));
+  const addAttributeButton = createButton('Add Attribute', 'button add', () => addAttribute(data));
+  const deleteButton = createButton('Delete', 'button delete', () => deleteItem(li, parentData));
+
+  collapsible.appendChild(cancelEditsButton);
+  collapsible.appendChild(saveEditsButton);
+  collapsible.appendChild(updateTextButton);
+  collapsible.appendChild(addAttributeButton);
+  collapsible.appendChild(deleteButton);
+
+  // Enable drag and drop for child items
+  enableDragAndDrop(content);
+
+  // Make a copy of the original data for canceling edits
+  originalDataCopy = JSON.parse(JSON.stringify(parentData));
+}
+
+function disableEditMode(li) {
+  const collapsible = li.querySelector('.collapsible');
+  const content = li.querySelector('.content');
+
+  // Remove all buttons except the "Edit" button
+  collapsible.innerHTML = '';
+  const editButton = createButton('Edit', 'button', () => enableEditMode(li, jsonData[collapsible.textContent], jsonData));
+  collapsible.appendChild(editButton);
+
+  // Hide the content if it was expanded
+  content.style.display = 'none';
+
+  // Reset the current edit mode item
+  currentEditModeItem = null;
+}
+
+function enableUpdateTextMode(collapsible, data, parentData) {
+  const key = collapsible.textContent;
   const input = document.createElement('input');
   input.type = 'text';
   input.value = key;
-  element.innerHTML = '';
-  element.appendChild(input);
 
-  input.addEventListener('blur', function() {
-    const newKey = input.value.trim();
-    if (newKey && newKey !== key) {
-      data[newKey] = data[key];
-      delete data[key];
-      displayJSON(jsonData, document.getElementById('jsonContainer'));
-    }
-  });
+  // Replace the collapsible content with the input field
+  collapsible.innerHTML = '';
+  collapsible.appendChild(input);
 
-  input.addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-      input.blur();
-    }
-  });
+  // Add "Cancel" and "Save Text" buttons
+  const cancelButton = createButton('Cancel', 'button', () => cancelUpdateText(collapsible, key));
+  const saveTextButton = createButton('Save Text', 'button', () => saveText(collapsible, input.value, data, parentData));
+
+  collapsible.appendChild(cancelButton);
+  collapsible.appendChild(saveTextButton);
 
   input.focus();
 }
 
-function enableEditMode(li, data) {
-  const content = li.querySelector('.content');
-  content.style.display = 'block'; // Ensure the content is expanded
+function cancelUpdateText(collapsible, originalKey) {
+  collapsible.textContent = originalKey;
+  enableEditMode(collapsible.parentElement, jsonData[originalKey], jsonData);
+}
 
-  const children = content.children;
-  for (const child of children) {
-    const deleteButton = document.createElement('button');
-    deleteButton.textContent = 'Delete';
-    deleteButton.classList.add('button', 'delete');
-    deleteButton.addEventListener('click', function() {
-      const key = child.getAttribute('data-key');
-      const parentKey = child.getAttribute('data-parent');
-      delete jsonData[parentKey][key];
-      displayJSON(jsonData, document.getElementById('jsonContainer'));
-    });
-
-    if (typeof data === 'object' && !Array.isArray(data)) {
-      child.querySelector('.collapsible').appendChild(deleteButton);
-    } else {
-      const editValueButton = document.createElement('button');
-      editValueButton.textContent = 'Edit Value';
-      editValueButton.classList.add('button');
-      editValueButton.addEventListener('click', function() {
-        const newValue = prompt('Enter new value:', data);
-        if (newValue !== null) {
-          const parentKey = child.getAttribute('data-parent');
-          jsonData[parentKey][child.getAttribute('data-key')] = newValue;
-          displayJSON(jsonData, document.getElementById('jsonContainer'));
-        }
-      });
-      child.querySelector('.collapsible').appendChild(editValueButton);
-    }
+function saveText(collapsible, newKey, data, parentData) {
+  if (newKey && newKey !== collapsible.textContent) {
+    parentData[newKey] = data;
+    delete parentData[collapsible.textContent];
+    displayJSON(jsonData, document.getElementById('jsonContainer'));
   }
 }
 
-function disableEditMode(li) {
-  const content = li.querySelector('.content');
-  const children = content.children;
-  for (const child of children) {
-    const collapsible = child.querySelector('.collapsible');
-    if (collapsible) {
-      collapsible.querySelectorAll('.button.delete, .button.edit').forEach(button => button.remove());
-    }
+function addAttribute(data) {
+  const newKey = prompt('Enter new attribute name:');
+  if (newKey) {
+    data[newKey] = "";
+    displayJSON(jsonData, document.getElementById('jsonContainer'));
   }
 }
 
-// Drag and Drop Functionality
-let dragSrcEl = null;
+function deleteItem(li, parentData) {
+  const key = li.getAttribute('data-key');
+  delete parentData[key];
+  displayJSON(jsonData, document.getElementById('jsonContainer'));
+}
+
+function cancelEdits(li, parentData) {
+  Object.assign(parentData, originalDataCopy);
+  displayJSON(jsonData, document.getElementById('jsonContainer'));
+}
+
+function saveEdits(li, parentData) {
+  originalDataCopy = null;
+  disableEditMode(li);
+}
+
+function createButton(text, className, onClick) {
+  const button = document.createElement('button');
+  button.textContent = text;
+  button.classList.add(...className.split(' '));
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function enableDragAndDrop(container) {
+  const draggables = container.querySelectorAll('.draggable');
+  draggables.forEach(draggable => {
+    draggable.setAttribute('draggable', true);
+    draggable.addEventListener('dragstart', handleDragStart);
+    draggable.addEventListener('dragover', handleDragOver);
+    draggable.addEventListener('drop', handleDrop);
+  });
+}
 
 function handleDragStart(e) {
-  dragSrcEl = this;
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/html', this.innerHTML);
+  e.dataTransfer.setData('text/plain', e.target.getAttribute('data-key'));
 }
 
 function handleDragOver(e) {
-  if (e.preventDefault) {
-    e.preventDefault();
-  }
-  e.dataTransfer.dropEffect = 'move';
-  return false;
-}
-
-function handleDragEnter(e) {
-  this.classList.add('over');
-}
-
-function handleDragLeave(e) {
-  this.classList.remove('over');
+  e.preventDefault();
 }
 
 function handleDrop(e) {
-  if (e.stopPropagation) {
-    e.stopPropagation();
-  }
-  if (dragSrcEl !== this) {
-    dragSrcEl.innerHTML = this.innerHTML;
-    this.innerHTML = e.dataTransfer.getData('text/html');
-  }
-  return false;
-}
+  e.preventDefault();
+  const draggedKey = e.dataTransfer.getData('text/plain');
+  const targetKey = e.target.getAttribute('data-key');
+  const parentData = jsonData[e.target.getAttribute('data-parent')];
 
-function handleDragEnd(e) {
-  this.classList.remove('over');
-}
+  if (draggedKey && targetKey && draggedKey !== targetKey) {
+    const keys = Object.keys(parentData);
+    const draggedIndex = keys.indexOf(draggedKey);
+    const targetIndex = keys.indexOf(targetKey);
 
-const draggables = document.querySelectorAll('.draggable');
-draggables.forEach(draggable => {
-  draggable.addEventListener('dragstart', handleDragStart);
-  draggable.addEventListener('dragover', handleDragOver);
-  draggable.addEventListener('dragenter', handleDragEnter);
-  draggable.addEventListener('dragleave', handleDragLeave);
-  draggable.addEventListener('drop', handleDrop);
-  draggable.addEventListener('dragend', handleDragEnd);
-});
+    if (draggedIndex !== -1 && targetIndex !== -1) {
+      const temp = keys[draggedIndex];
+      keys[draggedIndex] = keys[targetIndex];
+      keys[targetIndex] = temp;
+
+      const reorderedData = {};
+      keys.forEach(key => {
+        reorderedData[key] = parentData[key];
+      });
+
+      Object.assign(parentData, reorderedData);
+      displayJSON(jsonData, document.getElementById('jsonContainer'));
+    }
+  }
+}
