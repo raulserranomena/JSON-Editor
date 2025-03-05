@@ -33,17 +33,19 @@ function displayJSON(data, container) {
 
 function createList(data, parentKey = null) {
   const ul = document.createElement('ul');
+  let index = 0;
   for (const key in data) {
     const li = document.createElement('li');
-    li.classList.add('list-item', 'draggable');
+    li.classList.add('list-item');
     li.setAttribute('data-key', key);
     li.setAttribute('data-parent', parentKey);
+    li.setAttribute('data-index', index);
 
     const collapsible = document.createElement('div');
     collapsible.classList.add('collapsible');
     collapsible.textContent = key;
     collapsible.addEventListener('click', function(event) {
-      if (!event.target.classList.contains('button')) {
+      if (!event.target.classList.contains('button') && !event.target.classList.contains('position-box')) {
         const content = this.nextElementSibling;
         content.style.display = content.style.display === 'none' ? 'block' : 'none';
       }
@@ -72,6 +74,7 @@ function createList(data, parentKey = null) {
     }
     li.appendChild(content);
     ul.appendChild(li);
+    index++;
   }
   return ul;
 }
@@ -97,8 +100,8 @@ function enableEditMode(li, data, parentData) {
   collapsible.appendChild(addAttributeButton);
   collapsible.appendChild(deleteButton);
 
-  // Enable drag and drop for child items
-  enableDragAndDrop(content);
+  // Add position boxes to child items
+  addPositionBoxes(content, parentData);
 
   // Make a copy of the original data for canceling edits
   originalDataCopy = JSON.parse(JSON.stringify(parentData));
@@ -112,6 +115,9 @@ function disableEditMode(li) {
   collapsible.innerHTML = '';
   const editButton = createButton('Edit', 'button', () => enableEditMode(li, jsonData[collapsible.textContent], jsonData));
   collapsible.appendChild(editButton);
+
+  // Remove position boxes
+  removePositionBoxes(content);
 
   // Reset the current edit mode item
   currentEditModeItem = null;
@@ -183,47 +189,37 @@ function createButton(text, className, onClick) {
   return button;
 }
 
-function enableDragAndDrop(container) {
-  const draggables = container.querySelectorAll('.draggable');
-  draggables.forEach(draggable => {
-    draggable.setAttribute('draggable', true);
-    draggable.addEventListener('dragstart', handleDragStart);
-    draggable.addEventListener('dragover', handleDragOver);
-    draggable.addEventListener('drop', handleDrop);
-  });
-}
-
-function handleDragStart(e) {
-  e.dataTransfer.setData('text/plain', e.target.getAttribute('data-key'));
-}
-
-function handleDragOver(e) {
-  e.preventDefault();
-}
-
-function handleDrop(e) {
-  e.preventDefault();
-  const draggedKey = e.dataTransfer.getData('text/plain');
-  const targetKey = e.target.getAttribute('data-key');
-  const parentData = jsonData[e.target.getAttribute('data-parent')];
-
-  if (draggedKey && targetKey && draggedKey !== targetKey) {
-    const keys = Object.keys(parentData);
-    const draggedIndex = keys.indexOf(draggedKey);
-    const targetIndex = keys.indexOf(targetKey);
-
-    if (draggedIndex !== -1 && targetIndex !== -1) {
-      const temp = keys[draggedIndex];
-      keys[draggedIndex] = keys[targetIndex];
-      keys[targetIndex] = temp;
-
-      const reorderedData = {};
-      keys.forEach(key => {
-        reorderedData[key] = parentData[key];
-      });
-
-      Object.assign(parentData, reorderedData);
-      displayJSON(jsonData, document.getElementById('jsonContainer'));
-    }
+function addPositionBoxes(container, parentData) {
+  const children = container.children;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    const positionBox = document.createElement('input');
+    positionBox.type = 'number';
+    positionBox.value = i + 1;
+    positionBox.classList.add('position-box');
+    positionBox.addEventListener('change', function() {
+      const newPosition = parseInt(this.value) - 1;
+      if (newPosition >= 0 && newPosition < children.length) {
+        const keys = Object.keys(parentData);
+        const key = child.getAttribute('data-key');
+        const currentIndex = keys.indexOf(key);
+        if (currentIndex !== -1) {
+          keys.splice(currentIndex, 1);
+          keys.splice(newPosition, 0, key);
+          const reorderedData = {};
+          keys.forEach(key => {
+            reorderedData[key] = parentData[key];
+          });
+          Object.assign(parentData, reorderedData);
+          displayJSON(jsonData, document.getElementById('jsonContainer'));
+        }
+      }
+    });
+    child.querySelector('.collapsible').prepend(positionBox);
   }
+}
+
+function removePositionBoxes(container) {
+  const positionBoxes = container.querySelectorAll('.position-box');
+  positionBoxes.forEach(box => box.remove());
 }
