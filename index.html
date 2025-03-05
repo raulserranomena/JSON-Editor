@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JSON Editor</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    .list-item {
+      margin-left: 20px;
+    }
+    .collapsible {
+      cursor: pointer;
+      padding: 5px;
+      border: 1px solid #ccc;
+      background-color: #f9f9f9;
+      margin-bottom: 5px;
+    }
+    .collapsible:hover {
+      background-color: #e9e9e9;
+    }
+    .content {
+      display: none;
+      padding-left: 20px;
+    }
+    .attribute {
+      margin: 5px 0;
+    }
+    .edit-input {
+      margin-left: 10px;
+    }
+    .button {
+      margin-left: 10px;
+      cursor: pointer;
+      padding: 2px 5px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 3px;
+    }
+    .button.delete {
+      background-color: #dc3545;
+    }
+    .button.add {
+      background-color: #28a745;
+    }
+  </style>
+</head>
+<body>
+  <h1>JSON Editor</h1>
+  <input type="file" id="jsonFileInput" accept=".json">
+  <div id="jsonContainer"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
