@@ -47,11 +47,22 @@
     .button.add {
       background-color: #28a745;
     }
+    .button.save {
+      background-color: #ffc107;
+      margin-top: 20px;
+    }
+    .draggable {
+      cursor: grab;
+    }
+    .draggable:active {
+      cursor: grabbing;
+    }
   </style>
 </head>
 <body>
   <h1>JSON Editor</h1>
   <input type="file" id="jsonFileInput" accept=".json">
+  <button id="saveButton" class="button save">Save JSON</button>
   <div id="jsonContainer"></div>
 
   <script src="script.js"></script>
