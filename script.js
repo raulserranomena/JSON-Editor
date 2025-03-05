@@ -42,6 +42,12 @@ function createList(data, parentKey = null) {
     const collapsible = document.createElement('div');
     collapsible.classList.add('collapsible');
     collapsible.textContent = key;
+    collapsible.addEventListener('click', function(event) {
+      if (!event.target.classList.contains('button')) {
+        const content = this.nextElementSibling;
+        content.style.display = content.style.display === 'none' ? 'block' : 'none';
+      }
+    });
 
     const editButton = document.createElement('button');
     editButton.textContent = 'Edit';
@@ -107,9 +113,6 @@ function disableEditMode(li) {
   const editButton = createButton('Edit', 'button', () => enableEditMode(li, jsonData[collapsible.textContent], jsonData));
   collapsible.appendChild(editButton);
 
-  // Hide the content if it was expanded
-  content.style.display = 'none';
-
   // Reset the current edit mode item
   currentEditModeItem = null;
 }
@@ -119,6 +122,7 @@ function enableUpdateTextMode(collapsible, data, parentData) {
   const input = document.createElement('input');
   input.type = 'text';
   input.value = key;
+  input.style.width = `${key.length * 8}px`; // Adjust input width based on text length
 
   // Replace the collapsible content with the input field
   collapsible.innerHTML = '';
