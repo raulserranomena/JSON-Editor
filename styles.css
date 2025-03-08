@@ -38,8 +38,9 @@ button {
   cursor: pointer;
 }
 
-/* When dragging over a potential drop target, highlight */
-.drag-over {
-  outline: 2px dashed #007bff;
-  outline-offset: -4px;
+/* Position input */
+.position-input {
+  width: 40px;
+  margin-right: 6px;
+  text-align: right;
 }
