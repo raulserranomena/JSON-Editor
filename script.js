@@ -184,8 +184,8 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
       // Make a deep copy of the entries order
       const originalEntries = buildEntriesArray(data).map((e) => ({ ...e }));
 
-      // Show position boxes on each child so user can reorder
-      enablePositionInputs(childContainer, data, parent, key);
+      // Show position + up/down controls on each child
+      enablePositionControls(childContainer, data, parent, key);
 
       // Cancel => revert
       cancelBtn.addEventListener("click", () => {
@@ -221,7 +221,7 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
         editKeyBtn.remove();
         addChildBtn.remove();
 
-        // re-render children from data (collapsed or not is up to you)
+        // re-render children from data
         rebuildChildContainer(childContainer, data, /* keepCollapsed= */ true);
 
         // restore normal mode
@@ -237,12 +237,14 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
         editKeyBtn.remove();
         addChildBtn.remove();
 
-        // remove position inputs
+        // remove position inputs and arrow buttons
         Array.from(childContainer.children).forEach((childElem) => {
           const posInput = childElem.querySelector(".position-input");
-          if (posInput) {
-            posInput.remove();
-          }
+          if (posInput) posInput.remove();
+          const upBtn = childElem.querySelector(".pos-up-btn");
+          if (upBtn) upBtn.remove();
+          const downBtn = childElem.querySelector(".pos-down-btn");
+          if (downBtn) downBtn.remove();
         });
 
         // remain expanded
@@ -340,8 +342,7 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
           data = newObj;
         }
         rebuildChildContainer(childContainer, data, true);
-        // re-add position inputs
-        enablePositionInputs(childContainer, data, parent, key);
+        enablePositionControls(childContainer, data, parent, key);
       });
     });
 
@@ -612,68 +613,83 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
 }
 
 /****************************************************************
- * enablePositionInputs:
- *    In "Edit" mode for an object/array, each child gets a <input type="number">
- *    for reordering. Changing that input in real-time repositions the child.
+ * enablePositionControls:
+ *    In "Edit" mode for an object/array, each child gets:
+ *       1) a <input type="number"> for the child’s 1-based position
+ *       2) an up-arrow (▲) button to move up by 1
+ *       3) a down-arrow (▼) button to move down by 1
+ *    Changing the number and pressing Enter repositions the item
+ *    (if within range). The up/down buttons reorder immediately.
  ****************************************************************/
-function enablePositionInputs(childContainer, data, parent, parentKey) {
+function enablePositionControls(childContainer, data, parent, parentKey) {
   const children = Array.from(childContainer.children);
   const total = children.length;
 
   children.forEach((childElem, i) => {
-    // Insert an <input type="number"> at the front
     const firstHeader = childElem.querySelector(".item-header");
     if (!firstHeader) return;
 
     // If there's already an input, remove it and re-add fresh
     const oldInput = firstHeader.querySelector(".position-input");
     if (oldInput) oldInput.remove();
+    const oldUp = firstHeader.querySelector(".pos-up-btn");
+    if (oldUp) oldUp.remove();
+    const oldDown = firstHeader.querySelector(".pos-down-btn");
+    if (oldDown) oldDown.remove();
 
+    // Create the number input
     const posInput = document.createElement("input");
     posInput.type = "number";
     posInput.className = "position-input";
-    // We'll do 1-based indexing for the user
-    posInput.value = (i + 1).toString();
+    posInput.value = (i + 1).toString(); // 1-based
     posInput.min = "1";
     posInput.max = String(total);
 
-    // On change (or input), reorder immediately
-    posInput.addEventListener("change", () => {
-      let newPos = parseInt(posInput.value, 10);
-      if (isNaN(newPos)) return; // ignore invalid
-      // clamp
-      if (newPos < 1) newPos = 1;
-      if (newPos > total) newPos = total;
-
-      const oldIndex = i;
-      const newIndex = newPos - 1;
-
-      if (newIndex !== oldIndex) {
-        reorderChild(data, oldIndex, newIndex, parent, parentKey);
-        // Rebuild the container, re-enable positions
-        rebuildChildContainer(childContainer, data, true);
-        enablePositionInputs(childContainer, data, parent, parentKey);
+    // On Enter, reorder to typed position
+    posInput.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        let newPos = parseInt(posInput.value, 10);
+        if (isNaN(newPos)) return;
+        if (newPos < 1 || newPos > total) return; // out of range => do nothing
+        const oldIndex = i;
+        const newIndex = newPos - 1;
+        if (newIndex !== oldIndex) {
+          reorderChild(data, oldIndex, newIndex, parent, parentKey);
+          rebuildChildContainer(childContainer, data, /* keepCollapsed= */ true);
+          enablePositionControls(childContainer, data, parent, parentKey);
+        }
       }
     });
 
-    // If user presses arrow up/down, this will also fire 'change' on blur or after they stop
-    // but let's also do an 'input' event to catch it immediately
-    posInput.addEventListener("input", () => {
-      let newPos = parseInt(posInput.value, 10);
-      if (isNaN(newPos)) return; // ignore invalid
-      if (newPos < 1) newPos = 1;
-      if (newPos > total) newPos = total;
-
-      const oldIndex = i;
-      const newIndex = newPos - 1;
-
-      if (newIndex !== oldIndex) {
-        reorderChild(data, oldIndex, newIndex, parent, parentKey);
+    // Up button
+    const upBtn = document.createElement("button");
+    upBtn.className = "pos-up-btn";
+    upBtn.textContent = "▲";
+    upBtn.addEventListener("click", () => {
+      // Move this item up 1
+      if (i > 0) {
+        reorderChild(data, i, i - 1, parent, parentKey);
         rebuildChildContainer(childContainer, data, true);
-        enablePositionInputs(childContainer, data, parent, parentKey);
+        enablePositionControls(childContainer, data, parent, parentKey);
       }
     });
 
+    // Down button
+    const downBtn = document.createElement("button");
+    downBtn.className = "pos-down-btn";
+    downBtn.textContent = "▼";
+    downBtn.addEventListener("click", () => {
+      // Move this item down 1
+      if (i < total - 1) {
+        reorderChild(data, i, i + 1, parent, parentKey);
+        rebuildChildContainer(childContainer, data, true);
+        enablePositionControls(childContainer, data, parent, parentKey);
+      }
+    });
+
+    // Insert them in front
+    firstHeader.insertBefore(downBtn, firstHeader.firstChild);
+    firstHeader.insertBefore(upBtn, firstHeader.firstChild);
     firstHeader.insertBefore(posInput, firstHeader.firstChild);
   });
 }
