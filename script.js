@@ -180,54 +180,49 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
         editKeyBtn.style.display = "none"; // root => no "edit key"
       }
 
+      // We'll store a snapshot of the original ordering so "Cancel" can revert
+      // Make a deep copy of the entries order
+      const originalEntries = buildEntriesArray(data).map((e) => ({ ...e }));
+
       // Show position boxes on each child so user can reorder
-      Array.from(childContainer.children).forEach((childElem) => {
-        const idx = parseInt(childElem.getAttribute("data-child-index"), 10);
-
-        // Create a small position <input> and place it before the child's header
-        const firstHeader = childElem.querySelector(".item-header");
-        if (!firstHeader) return;
-
-        const posInput = document.createElement("input");
-        posInput.type = "number";
-        posInput.className = "position-input";
-        // We'll do 1-based indexing for the user
-        posInput.value = (idx + 1).toString();
-
-        // Pressing ENTER => reorder
-        posInput.addEventListener("keydown", (ev) => {
-          if (ev.key === "Enter") {
-            const newPos = parseInt(posInput.value, 10) - 1; // convert back to 0-based
-            if (!isNaN(newPos)) {
-              reorderChild(data, idx, newPos, parent, key);
-              // Rebuild the child container (remain in edit mode)
-              rebuildChildContainer(childContainer, data, /* keepCollapsed= */ true);
-            }
-          }
-        });
-
-        // Insert before the child's header text
-        firstHeader.insertBefore(posInput, firstHeader.firstChild);
-      });
+      enablePositionInputs(childContainer, data, parent, key);
 
       // Cancel => revert
       cancelBtn.addEventListener("click", () => {
-        // Remove those new buttons
+        // Rebuild the parent's data using the original order
+        if (Array.isArray(data)) {
+          data.length = 0; // clear
+          originalEntries.forEach((ent) => data.push(ent.value));
+        } else {
+          // object
+          const newObj = {};
+          originalEntries.forEach((ent) => {
+            newObj[ent.key] = ent.value;
+          });
+          if (parent) {
+            if (Array.isArray(parent)) {
+              const i = parent.indexOf(data);
+              if (i >= 0) {
+                parent[i] = newObj;
+              }
+            } else {
+              parent[key] = newObj;
+            }
+          } else {
+            jsonData = newObj;
+          }
+          // update reference
+          data = newObj;
+        }
+
+        // remove the edit-mode buttons
         cancelBtn.remove();
         saveBtn.remove();
         editKeyBtn.remove();
         addChildBtn.remove();
 
-        // remove position inputs
-        Array.from(childContainer.children).forEach((childElem) => {
-          const posInput = childElem.querySelector(".position-input");
-          if (posInput) {
-            posInput.remove();
-          }
-        });
-
-        // re-render children from data
-        rebuildChildContainer(childContainer, data, true);
+        // re-render children from data (collapsed or not is up to you)
+        rebuildChildContainer(childContainer, data, /* keepCollapsed= */ true);
 
         // restore normal mode
         editBtn.style.display = "inline-block";
@@ -345,6 +340,8 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
           data = newObj;
         }
         rebuildChildContainer(childContainer, data, true);
+        // re-add position inputs
+        enablePositionInputs(childContainer, data, parent, key);
       });
     });
 
@@ -615,16 +612,69 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
 }
 
 /****************************************************************
- * REBUILDING CHILDREN (e.g. after reordering or adding a child)
+ * enablePositionInputs:
+ *    In "Edit" mode for an object/array, each child gets a <input type="number">
+ *    for reordering. Changing that input in real-time repositions the child.
  ****************************************************************/
-function rebuildChildContainer(childContainer, parentData, keepCollapsed) {
-  childContainer.innerHTML = "";
-  const entries = buildEntriesArray(parentData);
-  entries.forEach((childEntry, index) => {
-    // keep each child collapsed by default if keepCollapsed==true
-    const childNode = createJsonNode(childEntry.value, parentData, childEntry.key, keepCollapsed);
-    childNode.setAttribute("data-child-index", index);
-    childContainer.appendChild(childNode);
+function enablePositionInputs(childContainer, data, parent, parentKey) {
+  const children = Array.from(childContainer.children);
+  const total = children.length;
+
+  children.forEach((childElem, i) => {
+    // Insert an <input type="number"> at the front
+    const firstHeader = childElem.querySelector(".item-header");
+    if (!firstHeader) return;
+
+    // If there's already an input, remove it and re-add fresh
+    const oldInput = firstHeader.querySelector(".position-input");
+    if (oldInput) oldInput.remove();
+
+    const posInput = document.createElement("input");
+    posInput.type = "number";
+    posInput.className = "position-input";
+    // We'll do 1-based indexing for the user
+    posInput.value = (i + 1).toString();
+    posInput.min = "1";
+    posInput.max = String(total);
+
+    // On change (or input), reorder immediately
+    posInput.addEventListener("change", () => {
+      let newPos = parseInt(posInput.value, 10);
+      if (isNaN(newPos)) return; // ignore invalid
+      // clamp
+      if (newPos < 1) newPos = 1;
+      if (newPos > total) newPos = total;
+
+      const oldIndex = i;
+      const newIndex = newPos - 1;
+
+      if (newIndex !== oldIndex) {
+        reorderChild(data, oldIndex, newIndex, parent, parentKey);
+        // Rebuild the container, re-enable positions
+        rebuildChildContainer(childContainer, data, true);
+        enablePositionInputs(childContainer, data, parent, parentKey);
+      }
+    });
+
+    // If user presses arrow up/down, this will also fire 'change' on blur or after they stop
+    // but let's also do an 'input' event to catch it immediately
+    posInput.addEventListener("input", () => {
+      let newPos = parseInt(posInput.value, 10);
+      if (isNaN(newPos)) return; // ignore invalid
+      if (newPos < 1) newPos = 1;
+      if (newPos > total) newPos = total;
+
+      const oldIndex = i;
+      const newIndex = newPos - 1;
+
+      if (newIndex !== oldIndex) {
+        reorderChild(data, oldIndex, newIndex, parent, parentKey);
+        rebuildChildContainer(childContainer, data, true);
+        enablePositionInputs(childContainer, data, parent, parentKey);
+      }
+    });
+
+    firstHeader.insertBefore(posInput, firstHeader.firstChild);
   });
 }
 
@@ -638,16 +688,13 @@ function rebuildChildContainer(childContainer, parentData, keepCollapsed) {
  */
 function reorderChild(parentData, oldIndex, newIndex, parent, parentKey) {
   if (Array.isArray(parentData)) {
-    if (newIndex < 0) newIndex = 0;
-    if (newIndex >= parentData.length) newIndex = parentData.length - 1;
-    // Move array item
+    if (newIndex < 0 || newIndex >= parentData.length) return;
     const [moved] = parentData.splice(oldIndex, 1);
     parentData.splice(newIndex, 0, moved);
   } else {
     // object => reorder its keys
     const entries = Object.entries(parentData);
-    if (newIndex < 0) newIndex = 0;
-    if (newIndex >= entries.length) newIndex = entries.length - 1;
+    if (newIndex < 0 || newIndex >= entries.length) return;
     const [moved] = entries.splice(oldIndex, 1);
     entries.splice(newIndex, 0, moved);
 
@@ -686,4 +733,18 @@ function buildEntriesArray(objOrArr) {
       value: objOrArr[k],
     }));
   }
+}
+
+/****************************************************************
+ * REBUILD CHILDREN
+ ****************************************************************/
+function rebuildChildContainer(childContainer, parentData, keepCollapsed) {
+  childContainer.innerHTML = "";
+  const entries = buildEntriesArray(parentData);
+  entries.forEach((childEntry, index) => {
+    // keep each child collapsed by default if keepCollapsed==true
+    const childNode = createJsonNode(childEntry.value, parentData, childEntry.key, keepCollapsed);
+    childNode.setAttribute("data-child-index", index);
+    childContainer.appendChild(childNode);
+  });
 }
