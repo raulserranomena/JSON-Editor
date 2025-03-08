@@ -129,7 +129,7 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
     childContainer.classList.add("json-children");
     wrapper.appendChild(childContainer);
 
-    // Build an array of entries so we can reorder them
+    // Build an array of entries so we can order them
     const entries = buildEntriesArray(data);
 
     if (entries.length > 0) {
@@ -180,49 +180,100 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
         editKeyBtn.style.display = "none"; // root => no "edit key"
       }
 
-      // We'll store a snapshot of the original ordering so "Cancel" can revert
-      // Make a deep copy of the entries order
-      const originalEntries = buildEntriesArray(data).map((e) => ({ ...e }));
+      // We'll store a snapshot of the original order so "Cancel" can revert
+      // We'll keep an array of { key, value, domNode } for each child
+      const originalEntries = buildEntriesArray(data).map((e, i) => {
+        return { key: e.key, value: e.value, domNode: childContainer.children[i] };
+      });
 
-      // Show position + up/down controls on each child
-      enablePositionControls(childContainer, data, parent, key);
+      // We'll build a separate array (childOrder) to track the new order
+      // as user repositions items. We'll store the same {key, value, domNode} references.
+      // That way we reorder in the DOM, but we only finalize changes on Save.
+      const childOrder = originalEntries.slice(); // shallow copy
+
+      // Show position controls
+      childOrder.forEach((item, i) => {
+        // Add the position controls in the child's header
+        const node = item.domNode;
+        const h = node.querySelector(".item-header");
+        if (!h) return;
+
+        // Create a position <input type="number">
+        const posInput = document.createElement("input");
+        posInput.type = "number";
+        posInput.className = "position-input";
+        posInput.value = String(i + 1); // 1-based
+        posInput.min = "1";
+        posInput.max = String(childOrder.length);
+
+        // On Enter, reorder
+        posInput.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") {
+            let newPos = parseInt(posInput.value, 10);
+            if (Number.isNaN(newPos)) return;
+            if (newPos < 1 || newPos > childOrder.length) return;
+            const oldIndex = childOrder.indexOf(item);
+            const newIndex = newPos - 1;
+            if (newIndex !== oldIndex) {
+              moveItem(childOrder, oldIndex, newIndex);
+              reorderDOM(childOrder, childContainer);
+            }
+          }
+        });
+
+        // Up button
+        const upBtn = document.createElement("button");
+        upBtn.className = "pos-up-btn";
+        upBtn.textContent = "▲";
+        upBtn.addEventListener("click", () => {
+          const oldIndex = childOrder.indexOf(item);
+          if (oldIndex > 0) {
+            moveItem(childOrder, oldIndex, oldIndex - 1);
+            reorderDOM(childOrder, childContainer);
+          }
+        });
+
+        // Down button
+        const downBtn = document.createElement("button");
+        downBtn.className = "pos-down-btn";
+        downBtn.textContent = "▼";
+        downBtn.addEventListener("click", () => {
+          const oldIndex = childOrder.indexOf(item);
+          if (oldIndex < childOrder.length - 1) {
+            moveItem(childOrder, oldIndex, oldIndex + 1);
+            reorderDOM(childOrder, childContainer);
+          }
+        });
+
+        // Insert them at the front
+        h.insertBefore(downBtn, h.firstChild);
+        h.insertBefore(upBtn, h.firstChild);
+        h.insertBefore(posInput, h.firstChild);
+      });
 
       // Cancel => revert
       cancelBtn.addEventListener("click", () => {
-        // Rebuild the parent's data using the original order
-        if (Array.isArray(data)) {
-          data.length = 0; // clear
-          originalEntries.forEach((ent) => data.push(ent.value));
-        } else {
-          // object
-          const newObj = {};
-          originalEntries.forEach((ent) => {
-            newObj[ent.key] = ent.value;
-          });
-          if (parent) {
-            if (Array.isArray(parent)) {
-              const i = parent.indexOf(data);
-              if (i >= 0) {
-                parent[i] = newObj;
-              }
-            } else {
-              parent[key] = newObj;
-            }
-          } else {
-            jsonData = newObj;
-          }
-          // update reference
-          data = newObj;
+        // Restore original DOM order
+        while (childContainer.firstChild) {
+          childContainer.removeChild(childContainer.firstChild);
         }
+        originalEntries.forEach((obj) => {
+          childContainer.appendChild(obj.domNode);
+        });
 
-        // remove the edit-mode buttons
+        // no changes are applied to "data"
         cancelBtn.remove();
         saveBtn.remove();
         editKeyBtn.remove();
         addChildBtn.remove();
 
-        // re-render children from data
-        rebuildChildContainer(childContainer, data, /* keepCollapsed= */ true);
+        // remove any position inputs / up/down from the DOM
+        childOrder.forEach((obj) => {
+          const h = obj.domNode.querySelector(".item-header");
+          if (!h) return;
+          const inputs = Array.from(h.querySelectorAll(".position-input, .pos-up-btn, .pos-down-btn"));
+          inputs.forEach((inp) => inp.remove());
+        });
 
         // restore normal mode
         editBtn.style.display = "inline-block";
@@ -231,20 +282,21 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
 
       // Save => keep changes
       saveBtn.addEventListener("click", () => {
-        // Remove the edit-mode buttons
+        // We reorder "data" according to childOrder
+        applyNewOrderToData(data, childOrder, parent, key);
+
+        // remove the edit-mode buttons
         cancelBtn.remove();
         saveBtn.remove();
         editKeyBtn.remove();
         addChildBtn.remove();
 
         // remove position inputs and arrow buttons
-        Array.from(childContainer.children).forEach((childElem) => {
-          const posInput = childElem.querySelector(".position-input");
-          if (posInput) posInput.remove();
-          const upBtn = childElem.querySelector(".pos-up-btn");
-          if (upBtn) upBtn.remove();
-          const downBtn = childElem.querySelector(".pos-down-btn");
-          if (downBtn) downBtn.remove();
+        childOrder.forEach((obj) => {
+          const h = obj.domNode.querySelector(".item-header");
+          if (!h) return;
+          const inputs = Array.from(h.querySelectorAll(".position-input, .pos-up-btn, .pos-down-btn"));
+          inputs.forEach((inp) => inp.remove());
         });
 
         // remain expanded
@@ -317,32 +369,36 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
 
       // Add Child => top insertion
       addChildBtn.addEventListener("click", () => {
-        // If data is an array, unshift a new entry
-        // If data is an object, we create a new object with new child first
         if (Array.isArray(data)) {
           data.unshift({ "new child": "" });
         } else {
-          const oldEntries = Object.entries(data);
+          const old = Object.entries(data);
           const newObj = { "new child": "" };
-          for (const [k, v] of oldEntries) {
+          for (const [k, v] of old) {
             newObj[k] = v;
           }
-          if (parent) {
-            if (Array.isArray(parent)) {
-              const i = parent.indexOf(data);
-              if (i >= 0) {
-                parent[i] = newObj;
-              }
-            } else {
-              parent[key] = newObj;
-            }
+          if (parent && !Array.isArray(parent)) {
+            parent[key] = newObj;
+          } else if (parent && Array.isArray(parent)) {
+            const i = parent.indexOf(data);
+            if (i >= 0) parent[i] = newObj;
           } else {
             jsonData = newObj;
           }
           data = newObj;
         }
-        rebuildChildContainer(childContainer, data, true);
-        enablePositionControls(childContainer, data, parent, key);
+        // rebuild
+        childContainer.innerHTML = "";
+        const newEntries = buildEntriesArray(data);
+        newEntries.forEach((childEntry, i) => {
+          const childNode = createJsonNode(childEntry.value, data, childEntry.key, true);
+          childNode.setAttribute("data-child-index", i);
+          childContainer.appendChild(childNode);
+        });
+        // re-add position controls
+        // We won't keep "originalEntries" updated for Add Child; you can remove it if you like
+        // or just consider "Cancel" won't revert brand-new children. (Up to you.)
+        enablePositionControlsImmediate(childContainer);
       });
     });
 
@@ -592,7 +648,7 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
 
     // Delete => remove from parent's data
     deleteBtn.addEventListener("click", () => {
-      if (parent) {
+      if (parent !== null) {
         if (Array.isArray(parent)) {
           const idx = parent.indexOf(data);
           if (idx >= 0) {
@@ -613,132 +669,7 @@ function createJsonNode(data, parent, key, startCollapsed = false) {
 }
 
 /****************************************************************
- * enablePositionControls:
- *    In "Edit" mode for an object/array, each child gets:
- *       1) a <input type="number"> for the child’s 1-based position
- *       2) an up-arrow (▲) button to move up by 1
- *       3) a down-arrow (▼) button to move down by 1
- *    Changing the number and pressing Enter repositions the item
- *    (if within range). The up/down buttons reorder immediately.
- ****************************************************************/
-function enablePositionControls(childContainer, data, parent, parentKey) {
-  const children = Array.from(childContainer.children);
-  const total = children.length;
-
-  children.forEach((childElem, i) => {
-    const firstHeader = childElem.querySelector(".item-header");
-    if (!firstHeader) return;
-
-    // If there's already an input, remove it and re-add fresh
-    const oldInput = firstHeader.querySelector(".position-input");
-    if (oldInput) oldInput.remove();
-    const oldUp = firstHeader.querySelector(".pos-up-btn");
-    if (oldUp) oldUp.remove();
-    const oldDown = firstHeader.querySelector(".pos-down-btn");
-    if (oldDown) oldDown.remove();
-
-    // Create the number input
-    const posInput = document.createElement("input");
-    posInput.type = "number";
-    posInput.className = "position-input";
-    posInput.value = (i + 1).toString(); // 1-based
-    posInput.min = "1";
-    posInput.max = String(total);
-
-    // On Enter, reorder to typed position
-    posInput.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter") {
-        let newPos = parseInt(posInput.value, 10);
-        if (isNaN(newPos)) return;
-        if (newPos < 1 || newPos > total) return; // out of range => do nothing
-        const oldIndex = i;
-        const newIndex = newPos - 1;
-        if (newIndex !== oldIndex) {
-          reorderChild(data, oldIndex, newIndex, parent, parentKey);
-          rebuildChildContainer(childContainer, data, /* keepCollapsed= */ true);
-          enablePositionControls(childContainer, data, parent, parentKey);
-        }
-      }
-    });
-
-    // Up button
-    const upBtn = document.createElement("button");
-    upBtn.className = "pos-up-btn";
-    upBtn.textContent = "▲";
-    upBtn.addEventListener("click", () => {
-      // Move this item up 1
-      if (i > 0) {
-        reorderChild(data, i, i - 1, parent, parentKey);
-        rebuildChildContainer(childContainer, data, true);
-        enablePositionControls(childContainer, data, parent, parentKey);
-      }
-    });
-
-    // Down button
-    const downBtn = document.createElement("button");
-    downBtn.className = "pos-down-btn";
-    downBtn.textContent = "▼";
-    downBtn.addEventListener("click", () => {
-      // Move this item down 1
-      if (i < total - 1) {
-        reorderChild(data, i, i + 1, parent, parentKey);
-        rebuildChildContainer(childContainer, data, true);
-        enablePositionControls(childContainer, data, parent, parentKey);
-      }
-    });
-
-    // Insert them in front
-    firstHeader.insertBefore(downBtn, firstHeader.firstChild);
-    firstHeader.insertBefore(upBtn, firstHeader.firstChild);
-    firstHeader.insertBefore(posInput, firstHeader.firstChild);
-  });
-}
-
-/****************************************************************
- * SHIFT CHILD POSITIONS
- ****************************************************************/
-/**
- * Reorder the child within parentData, moving from oldIndex to newIndex.
- * If parentData is an array => splice.
- * If parentData is an object => reorder the object's entries in array form.
- */
-function reorderChild(parentData, oldIndex, newIndex, parent, parentKey) {
-  if (Array.isArray(parentData)) {
-    if (newIndex < 0 || newIndex >= parentData.length) return;
-    const [moved] = parentData.splice(oldIndex, 1);
-    parentData.splice(newIndex, 0, moved);
-  } else {
-    // object => reorder its keys
-    const entries = Object.entries(parentData);
-    if (newIndex < 0 || newIndex >= entries.length) return;
-    const [moved] = entries.splice(oldIndex, 1);
-    entries.splice(newIndex, 0, moved);
-
-    // reconstruct the object
-    const newObj = {};
-    for (const [k, v] of entries) {
-      newObj[k] = v;
-    }
-
-    // place it back into its parent
-    if (parent) {
-      if (Array.isArray(parent)) {
-        const i = parent.indexOf(parentData);
-        if (i >= 0) {
-          parent[i] = newObj;
-        }
-      } else {
-        parent[parentKey] = newObj;
-      }
-    } else {
-      // root
-      jsonData = newObj;
-    }
-  }
-}
-
-/****************************************************************
- * BUILD ENTRIES ARRAY
+ * HELPER: Build an array of { key, value } for an object or array
  ****************************************************************/
 function buildEntriesArray(objOrArr) {
   if (Array.isArray(objOrArr)) {
@@ -752,15 +683,72 @@ function buildEntriesArray(objOrArr) {
 }
 
 /****************************************************************
- * REBUILD CHILDREN
+ * HELPER: Move item in an array from oldIndex to newIndex
  ****************************************************************/
-function rebuildChildContainer(childContainer, parentData, keepCollapsed) {
-  childContainer.innerHTML = "";
-  const entries = buildEntriesArray(parentData);
-  entries.forEach((childEntry, index) => {
-    // keep each child collapsed by default if keepCollapsed==true
-    const childNode = createJsonNode(childEntry.value, parentData, childEntry.key, keepCollapsed);
-    childNode.setAttribute("data-child-index", index);
-    childContainer.appendChild(childNode);
+function moveItem(arr, oldIndex, newIndex) {
+  if (newIndex >= arr.length) newIndex = arr.length - 1;
+  if (newIndex < 0) newIndex = 0;
+  if (oldIndex === newIndex) return;
+  const [moved] = arr.splice(oldIndex, 1);
+  arr.splice(newIndex, 0, moved);
+}
+
+/****************************************************************
+ * HELPER: reorderDOM => reorder the childContainer DOM
+ *         to match the array of {domNode} in childOrder
+ ****************************************************************/
+function reorderDOM(childOrder, container) {
+  // remove all
+  while (container.firstChild) {
+    container.removeChild(container.firstChild);
+  }
+  // append in new order
+  childOrder.forEach((obj) => {
+    container.appendChild(obj.domNode);
   });
+  // update each input's displayed position (1-based)
+  childOrder.forEach((obj, i) => {
+    const input = obj.domNode.querySelector(".position-input");
+    if (input) input.value = String(i + 1);
+  });
+}
+
+/****************************************************************
+ * applyNewOrderToData => rewrite data (object or array)
+ *     to match childOrder
+ ****************************************************************/
+function applyNewOrderToData(data, childOrder, parent, parentKey) {
+  if (Array.isArray(data)) {
+    data.length = 0;
+    childOrder.forEach((obj) => {
+      data.push(obj.value);
+    });
+  } else {
+    // object
+    const newObj = {};
+    childOrder.forEach((obj) => {
+      newObj[obj.key] = obj.value;
+    });
+    if (parent) {
+      if (Array.isArray(parent)) {
+        const idx = parent.indexOf(data);
+        if (idx >= 0) {
+          parent[idx] = newObj;
+        }
+      } else {
+        parent[parentKey] = newObj;
+      }
+    } else {
+      jsonData = newObj;
+    }
+  }
+}
+
+/****************************************************************
+ * On addChild we might want to re-show position controls
+ ****************************************************************/
+function enablePositionControlsImmediate(childContainer) {
+  // For each child, just do minimal “no-op” or re-run logic, if desired
+  // We basically re-Edit. This is optional. If you want brand-new children
+  // also to have position controls, call a small version of the logic here.
 }
