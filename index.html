@@ -1,70 +1,20 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JSON Editor</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-    }
-    .list-item {
-      margin-left: 20px;
-    }
-    .collapsible {
-      cursor: pointer;
-      padding: 5px;
-      border: 1px solid #ccc;
-      background-color: #f9f9f9;
-      margin-bottom: 5px;
-    }
-    .collapsible:hover {
-      background-color: #e9e9e9;
-    }
-    .content {
-      display: none;
-      padding-left: 20px;
-    }
-    .attribute {
-      margin: 5px 0;
-    }
-    .edit-input {
-      margin-left: 10px;
-    }
-    .button {
-      margin-left: 10px;
-      cursor: pointer;
-      padding: 2px 5px;
-      background-color: #007bff;
-      color: white;
-      border: none;
-      border-radius: 3px;
-    }
-    .button.delete {
-      background-color: #dc3545;
-    }
-    .button.add {
-      background-color: #28a745;
-    }
-    .button.save {
-      background-color: #ffc107;
-      margin-top: 20px;
-    }
-    .draggable {
-      cursor: grab;
-    }
-    .draggable:active {
-      cursor: grabbing;
-    }
-  </style>
-</head>
-<body>
-  <h1>JSON Editor</h1>
-  <input type="file" id="jsonFileInput" accept=".json">
-  <button id="saveButton" class="button save">Save JSON</button>
-  <div id="jsonContainer"></div>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>JSON Editor</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <h1>JSON Editor</h1>
 
-  <script src="script.js"></script>
-</body>
+    <!-- Button + input to open a JSON file -->
+    <input type="file" id="fileInput" accept=".json" />
+    <button id="saveJsonBtn">Save JSON</button>
+
+    <!-- Where the JSON hierarchy will be displayed -->
+    <div id="jsonContainer"></div>
+
+    <script src="script.js"></script>
+  </body>
 </html>
