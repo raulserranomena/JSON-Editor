@@ -1,225 +1,393 @@
-let jsonData = {};
-let currentEditModeItem = null;
-let originalDataCopy = null;
+let jsonData = null; // This will store the raw JS object we load from the fileInput
+const fileInput = document.getElementById("fileInput");
+const jsonContainer = document.getElementById("jsonContainer");
+const saveJsonBtn = document.getElementById("saveJsonBtn");
 
-document.getElementById('jsonFileInput').addEventListener('change', function(event) {
-  const file = event.target.files[0];
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = function(e) {
+/**
+ * Reads the selected file and parses it as JSON.
+ */
+fileInput.addEventListener("change", function () {
+  if (!fileInput.files || fileInput.files.length === 0) return;
+  const file = fileInput.files[0];
+  const reader = new FileReader();
+
+  reader.onload = function (e) {
+    try {
       jsonData = JSON.parse(e.target.result);
-      displayJSON(jsonData, document.getElementById('jsonContainer'));
-    };
-    reader.readAsText(file);
-  }
+      renderJSON(jsonData, jsonContainer);
+    } catch (err) {
+      alert("Invalid JSON file!");
+      console.error(err);
+    }
+  };
+
+  reader.readAsText(file);
 });
 
-document.getElementById('saveButton').addEventListener('click', function() {
+/**
+ * Convert the JS object into an interactive, nested list in the DOM.
+ * @param {any} data  The data (object, array, or primitive) to be rendered.
+ * @param {HTMLElement} container The DOM node where this data should be appended.
+ * @param {string|number} key The property name or index of the current item.
+ * @param {object|null} parent Parent reference for deletion or updates.
+ */
+function renderJSON(data, container, key = "", parent = null) {
+  // Create a wrapper item
+  const itemWrapper = document.createElement("div");
+  itemWrapper.classList.add("json-item", "collapsed"); // By default, collapsed
+  container.appendChild(itemWrapper);
+
+  // Create a small toggle button to expand/collapse
+  const toggleBtn = document.createElement("button");
+  toggleBtn.classList.add("toggle-button");
+  toggleBtn.textContent = "+";
+  toggleBtn.addEventListener("click", () => {
+    const isCollapsed = itemWrapper.classList.toggle("collapsed");
+    toggleBtn.textContent = isCollapsed ? "+" : "-";
+  });
+  itemWrapper.appendChild(toggleBtn);
+
+  // Create a container for the header info (key, buttons, etc.)
+  const headerSpan = document.createElement("span");
+  headerSpan.classList.add("item-header");
+  itemWrapper.appendChild(headerSpan);
+
+  // Display the key (or index) for this item
+  const keySpan = document.createElement("span");
+  keySpan.textContent = key !== "" ? `${key}: ` : ""; // hide if root
+  headerSpan.appendChild(keySpan);
+
+  // Detect if data is an object or array
+  if (typeof data === "object" && data !== null) {
+    // This node has children
+    const childrenContainer = document.createElement("div");
+    childrenContainer.classList.add("json-children");
+    itemWrapper.appendChild(childrenContainer);
+
+    // Create edit/delete button row for this parent
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "Edit";
+    headerSpan.appendChild(editBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.textContent = "Delete";
+    headerSpan.appendChild(deleteBtn);
+
+    // Expand vs collapse display
+    toggleBtn.style.display = "inline-block";
+
+    // If it's an array, iterate by index; if object, iterate by property key
+    const entries = Array.isArray(data)
+      ? data.map((val, idx) => ({ key: idx, value: val }))
+      : Object.entries(data).map(([k, v]) => ({ key: k, value: v }));
+
+    // Recursively render each child
+    entries.forEach((child) => {
+      renderJSON(child.value, childrenContainer, child.key, data);
+    });
+
+    // Handle “Edit” button
+    editBtn.addEventListener("click", () => {
+      // Expand this item so we see all children
+      itemWrapper.classList.remove("collapsed");
+      toggleBtn.textContent = "-";
+
+      // Hide the normal edit/delete buttons
+      editBtn.style.display = "none";
+      deleteBtn.style.display = "none";
+
+      // Create “Cancel”, “Save”, “Edit text”, “Add child” for the parent
+      const cancelBtn = document.createElement("button");
+      cancelBtn.textContent = "Cancel";
+      const saveBtn = document.createElement("button");
+      saveBtn.textContent = "Save";
+      const editTextBtn = document.createElement("button");
+      editTextBtn.textContent = "Edit text";
+      const addChildBtn = document.createElement("button");
+      addChildBtn.textContent = "Add child";
+
+      headerSpan.appendChild(cancelBtn);
+      headerSpan.appendChild(saveBtn);
+      headerSpan.appendChild(editTextBtn);
+      headerSpan.appendChild(addChildBtn);
+
+      // For each child, show “delete” button (it already exists inside them if we handle it similarly),
+      // but you might want to handle other per-child changes here, too.
+
+      // “Edit text” button: let the user rename this key (if it has one) or rename the root
+      editTextBtn.addEventListener("click", () => {
+        // Hide all other controls
+        cancelBtn.style.display = "none";
+        saveBtn.style.display = "none";
+        editTextBtn.style.display = "none";
+        addChildBtn.style.display = "none";
+
+        // Create an input to edit the key text
+        const oldKey = keySpan.textContent.replace(/:$/, "").trim();
+        const textInput = document.createElement("input");
+        textInput.type = "text";
+        textInput.value = oldKey;
+        headerSpan.insertBefore(textInput, headerSpan.firstChild);
+
+        // Show only “Cancel” and “Save” – re-use them or create new ones
+        const tempCancel = document.createElement("button");
+        const tempSave = document.createElement("button");
+        tempCancel.textContent = "Cancel";
+        tempSave.textContent = "Save";
+
+        headerSpan.appendChild(tempCancel);
+        headerSpan.appendChild(tempSave);
+
+        // On “Cancel”, revert
+        tempCancel.addEventListener("click", () => {
+          textInput.remove();
+          tempCancel.remove();
+          tempSave.remove();
+          // Return to previous edit-state controls
+          cancelBtn.style.display = "inline-block";
+          saveBtn.style.display = "inline-block";
+          editTextBtn.style.display = "inline-block";
+          addChildBtn.style.display = "inline-block";
+        });
+
+        // On “Save”, update the key
+        tempSave.addEventListener("click", () => {
+          keySpan.textContent = textInput.value + ": ";
+          textInput.remove();
+          tempCancel.remove();
+          tempSave.remove();
+          // Return to previous edit-state controls
+          cancelBtn.style.display = "inline-block";
+          saveBtn.style.display = "inline-block";
+          editTextBtn.style.display = "inline-block";
+          addChildBtn.style.display = "inline-block";
+        });
+      });
+
+      // “Add child” button
+      addChildBtn.addEventListener("click", () => {
+        // If data is an object or array, just push a new child
+        // If it's an array, push at index 0, if it's an object, add a new property
+        if (Array.isArray(data)) {
+          data.unshift({ "new child": "" });
+        } else {
+          // Add a default new key to the front
+          // There's no stable "front" in an object, but we can store it logically
+          // We'll call it "new child". If the key collides, rename as needed.
+          data["new child"] = "";
+        }
+        // Re-render from the parent container
+        reRender();
+      });
+
+      // “Cancel” – restore old UI
+      cancelBtn.addEventListener("click", () => {
+        reRender(); // Just revert everything by re-rendering
+      });
+
+      // “Save” – keep changes, but exit edit mode
+      saveBtn.addEventListener("click", () => {
+        // If you have logic to do partial saving, handle it here.
+        // Right now we just accept the changes in memory and re-render.
+        reRender();
+      });
+    });
+
+    // “Delete” – remove this object from its parent
+    deleteBtn.addEventListener("click", () => {
+      if (parent !== null) {
+        if (Array.isArray(parent)) {
+          // parent is an array, so find index
+          const index = parent.indexOf(data);
+          if (index > -1) {
+            parent.splice(index, 1);
+          }
+        } else {
+          // parent is an object, remove key
+          delete parent[key];
+        }
+        reRender();
+      } else {
+        // If there's no parent, this is the top-level object, so clear everything
+        jsonData = {};
+        renderJSON(jsonData, jsonContainer);
+      }
+    });
+  } else {
+    // data is a primitive
+    // Show the value
+    const valueSpan = document.createElement("span");
+    valueSpan.textContent = data;
+    headerSpan.appendChild(valueSpan);
+
+    // Normal mode: "Edit" and "Delete"
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "Edit";
+    headerSpan.appendChild(editBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.textContent = "Delete";
+    headerSpan.appendChild(deleteBtn);
+
+    // There's no need for a toggle in a leaf
+    toggleBtn.style.display = "none";
+
+    // If there's a primitive value, we can show an "edit value" mode or
+    // follow the specification about "edit text" or "edit value"
+    // We'll keep it simple: "edit" => "Cancel"/"Save"/"Edit text"/"Add child"
+    editBtn.addEventListener("click", () => {
+      // Hide normal buttons
+      editBtn.style.display = "none";
+      deleteBtn.style.display = "none";
+
+      // Create “Cancel”, “Save”, “Edit text”, “Add child”
+      const cancelBtn = document.createElement("button");
+      const saveBtn = document.createElement("button");
+      const editTextBtn = document.createElement("button");
+      const addChildBtn = document.createElement("button");
+
+      cancelBtn.textContent = "Cancel";
+      saveBtn.textContent = "Save";
+      editTextBtn.textContent = "Edit text";
+      addChildBtn.textContent = "Add child";
+
+      headerSpan.appendChild(cancelBtn);
+      headerSpan.appendChild(saveBtn);
+      headerSpan.appendChild(editTextBtn);
+      headerSpan.appendChild(addChildBtn);
+
+      // “Edit text”: we let user directly edit the value
+      editTextBtn.addEventListener("click", () => {
+        // Hide these four
+        cancelBtn.style.display = "none";
+        saveBtn.style.display = "none";
+        editTextBtn.style.display = "none";
+        addChildBtn.style.display = "none";
+
+        // Create input
+        const textInput = document.createElement("input");
+        textInput.type = "text";
+        textInput.value = data; // old value
+        headerSpan.insertBefore(textInput, valueSpan);
+        valueSpan.style.display = "none";
+
+        const tempCancel = document.createElement("button");
+        const tempSave = document.createElement("button");
+        tempCancel.textContent = "Cancel";
+        tempSave.textContent = "Save";
+        headerSpan.appendChild(tempCancel);
+        headerSpan.appendChild(tempSave);
+
+        tempCancel.addEventListener("click", () => {
+          textInput.remove();
+          tempCancel.remove();
+          tempSave.remove();
+          valueSpan.style.display = "inline";
+          // restore original four
+          cancelBtn.style.display = "inline-block";
+          saveBtn.style.display = "inline-block";
+          editTextBtn.style.display = "inline-block";
+          addChildBtn.style.display = "inline-block";
+        });
+
+        tempSave.addEventListener("click", () => {
+          data = textInput.value;
+          valueSpan.textContent = data;
+          textInput.remove();
+          tempCancel.remove();
+          tempSave.remove();
+          valueSpan.style.display = "inline";
+          // restore original four
+          cancelBtn.style.display = "inline-block";
+          saveBtn.style.display = "inline-block";
+          editTextBtn.style.display = "inline-block";
+          addChildBtn.style.display = "inline-block";
+        });
+      });
+
+      // “Add child” => We are converting a leaf to a node:
+      //   if it has a value, we add a new child named "old value" to preserve it,
+      //   plus "new child". Then this item’s data becomes an object/array.
+      addChildBtn.addEventListener("click", () => {
+        const oldValue = data;
+        // Convert this item into an object
+        const newObj = {
+          "new child": "",
+          "old value": oldValue,
+        };
+        // Now we must replace the parent's reference
+        if (parent !== null) {
+          if (Array.isArray(parent)) {
+            // Replace the index of data with newObj
+            const index = parent.indexOf(data);
+            if (index >= 0) {
+              parent[index] = newObj;
+            }
+          } else {
+            parent[key] = newObj;
+          }
+        } else {
+          // If it's root, just set global
+          jsonData = newObj;
+        }
+        reRender();
+      });
+
+      // “Cancel” => revert
+      cancelBtn.addEventListener("click", () => {
+        reRender();
+      });
+
+      // “Save” => accept changes, exit edit mode
+      saveBtn.addEventListener("click", () => {
+        // For a single primitive, there's not much to save beyond the re-render
+        reRender();
+      });
+    });
+
+    // “Delete” => remove from parent
+    deleteBtn.addEventListener("click", () => {
+      if (parent !== null) {
+        if (Array.isArray(parent)) {
+          const index = parent.indexOf(data);
+          if (index > -1) {
+            parent.splice(index, 1);
+          }
+        } else {
+          delete parent[key];
+        }
+        reRender();
+      } else {
+        // top-level
+        jsonData = {};
+        reRender();
+      }
+    });
+  }
+
+  function reRender() {
+    // Clear container and re-render
+    jsonContainer.innerHTML = "";
+    renderJSON(jsonData, jsonContainer);
+  }
+}
+
+/**
+ * Save JSON button: Provide a way to “download” the updated JSON.
+ */
+saveJsonBtn.addEventListener("click", () => {
+  if (!jsonData) return;
+  const fileName = "updated.json";
   const jsonStr = JSON.stringify(jsonData, null, 2);
-  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const blob = new Blob([jsonStr], { type: "application/json" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+
+  const a = document.createElement("a");
   a.href = url;
-  a.download = 'updated.json';
+  a.download = fileName;
+  document.body.appendChild(a);
   a.click();
+
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 });
-
-function displayJSON(data, container) {
-  container.innerHTML = '';
-  const list = createList(data);
-  container.appendChild(list);
-}
-
-function createList(data, parentKey = null) {
-  const ul = document.createElement('ul');
-  let index = 0;
-  for (const key in data) {
-    const li = document.createElement('li');
-    li.classList.add('list-item');
-    li.setAttribute('data-key', key);
-    li.setAttribute('data-parent', parentKey);
-    li.setAttribute('data-index', index);
-
-    const collapsible = document.createElement('div');
-    collapsible.classList.add('collapsible');
-    collapsible.textContent = key;
-    collapsible.addEventListener('click', function(event) {
-      if (!event.target.classList.contains('button') && !event.target.classList.contains('position-box')) {
-        const content = this.nextElementSibling;
-        content.style.display = content.style.display === 'none' ? 'block' : 'none';
-      }
-    });
-
-    const editButton = document.createElement('button');
-    editButton.textContent = 'Edit';
-    editButton.classList.add('button');
-    editButton.addEventListener('click', function() {
-      if (currentEditModeItem) {
-        disableEditMode(currentEditModeItem);
-      }
-      enableEditMode(li, data[key], data);
-      currentEditModeItem = li;
-    });
-
-    collapsible.appendChild(editButton);
-    li.appendChild(collapsible);
-
-    const content = document.createElement('div');
-    content.classList.add('content');
-    if (typeof data[key] === 'object' && !Array.isArray(data[key])) {
-      content.appendChild(createList(data[key], key));
-    } else {
-      content.textContent = JSON.stringify(data[key]);
-    }
-    li.appendChild(content);
-    ul.appendChild(li);
-    index++;
-  }
-  return ul;
-}
-
-function enableEditMode(li, data, parentData) {
-  const collapsible = li.querySelector('.collapsible');
-  const content = li.querySelector('.content');
-  content.style.display = 'block'; // Ensure the content is expanded
-
-  // Hide the "Edit" button
-  collapsible.querySelector('button').style.display = 'none';
-
-  // Create and add new buttons
-  const cancelEditsButton = createButton('Cancel Edits', 'button', () => cancelEdits(li, parentData));
-  const saveEditsButton = createButton('Save Edits', 'button', () => saveEdits(li, parentData));
-  const updateTextButton = createButton('Update Text', 'button', () => enableUpdateTextMode(collapsible, data, parentData));
-  const addAttributeButton = createButton('Add Attribute', 'button add', () => addAttribute(data));
-  const deleteButton = createButton('Delete', 'button delete', () => deleteItem(li, parentData));
-
-  collapsible.appendChild(cancelEditsButton);
-  collapsible.appendChild(saveEditsButton);
-  collapsible.appendChild(updateTextButton);
-  collapsible.appendChild(addAttributeButton);
-  collapsible.appendChild(deleteButton);
-
-  // Add position boxes to child items
-  addPositionBoxes(content, parentData);
-
-  // Make a copy of the original data for canceling edits
-  originalDataCopy = JSON.parse(JSON.stringify(parentData));
-}
-
-function disableEditMode(li) {
-  const collapsible = li.querySelector('.collapsible');
-  const content = li.querySelector('.content');
-
-  // Remove all buttons except the "Edit" button
-  collapsible.innerHTML = '';
-  const editButton = createButton('Edit', 'button', () => enableEditMode(li, jsonData[collapsible.textContent], jsonData));
-  collapsible.appendChild(editButton);
-
-  // Remove position boxes
-  removePositionBoxes(content);
-
-  // Reset the current edit mode item
-  currentEditModeItem = null;
-}
-
-function enableUpdateTextMode(collapsible, data, parentData) {
-  const key = collapsible.textContent;
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.value = key;
-  input.style.width = `${key.length * 8}px`; // Adjust input width based on text length
-
-  // Replace the collapsible content with the input field
-  collapsible.innerHTML = '';
-  collapsible.appendChild(input);
-
-  // Add "Cancel" and "Save Text" buttons
-  const cancelButton = createButton('Cancel', 'button', () => cancelUpdateText(collapsible, key));
-  const saveTextButton = createButton('Save Text', 'button', () => saveText(collapsible, input.value, data, parentData));
-
-  collapsible.appendChild(cancelButton);
-  collapsible.appendChild(saveTextButton);
-
-  input.focus();
-}
-
-function cancelUpdateText(collapsible, originalKey) {
-  collapsible.textContent = originalKey;
-  enableEditMode(collapsible.parentElement, jsonData[originalKey], jsonData);
-}
-
-function saveText(collapsible, newKey, data, parentData) {
-  if (newKey && newKey !== collapsible.textContent) {
-    parentData[newKey] = data;
-    delete parentData[collapsible.textContent];
-    displayJSON(jsonData, document.getElementById('jsonContainer'));
-  }
-}
-
-function addAttribute(data) {
-  const newKey = prompt('Enter new attribute name:');
-  if (newKey) {
-    data[newKey] = "";
-    displayJSON(jsonData, document.getElementById('jsonContainer'));
-  }
-}
-
-function deleteItem(li, parentData) {
-  const key = li.getAttribute('data-key');
-  delete parentData[key];
-  displayJSON(jsonData, document.getElementById('jsonContainer'));
-}
-
-function cancelEdits(li, parentData) {
-  Object.assign(parentData, originalDataCopy);
-  displayJSON(jsonData, document.getElementById('jsonContainer'));
-}
-
-function saveEdits(li, parentData) {
-  originalDataCopy = null;
-  disableEditMode(li);
-}
-
-function createButton(text, className, onClick) {
-  const button = document.createElement('button');
-  button.textContent = text;
-  button.classList.add(...className.split(' '));
-  button.addEventListener('click', onClick);
-  return button;
-}
-
-function addPositionBoxes(container, parentData) {
-  const children = container.children;
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i];
-    const positionBox = document.createElement('input');
-    positionBox.type = 'number';
-    positionBox.value = i + 1;
-    positionBox.classList.add('position-box');
-    positionBox.addEventListener('change', function() {
-      const newPosition = parseInt(this.value) - 1;
-      if (newPosition >= 0 && newPosition < children.length) {
-        const keys = Object.keys(parentData);
-        const key = child.getAttribute('data-key');
-        const currentIndex = keys.indexOf(key);
-        if (currentIndex !== -1) {
-          keys.splice(currentIndex, 1);
-          keys.splice(newPosition, 0, key);
-          const reorderedData = {};
-          keys.forEach(key => {
-            reorderedData[key] = parentData[key];
-          });
-          Object.assign(parentData, reorderedData);
-          displayJSON(jsonData, document.getElementById('jsonContainer'));
-        }
-      }
-    });
-    child.querySelector('.collapsible').prepend(positionBox);
-  }
-}
-
-function removePositionBoxes(container) {
-  const positionBoxes = container.querySelectorAll('.position-box');
-  positionBoxes.forEach(box => box.remove());
-}
