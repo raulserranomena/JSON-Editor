@@ -7,42 +7,38 @@ body {
   margin-top: 20px;
 }
 
-/* Basic styling for each item */
+/* Each node in the JSON tree */
 .json-item {
-  margin-left: 20px;
   position: relative;
   padding-left: 20px;
+  margin-left: 20px;
 }
 
+/* The toggle +/- button */
 .json-item .toggle-button {
-  cursor: pointer;
-  margin-right: 8px;
   border: none;
   background: none;
   font-weight: bold;
+  cursor: pointer;
+  margin-right: 8px;
 }
 
-/* Children container */
-.json-children {
-  margin-left: 32px;
-}
-
-/* Collapsed items have hidden children */
+/* Hide children of collapsed items */
 .collapsed > .json-children {
   display: none;
 }
 
-/* Buttons */
+.json-children {
+  margin-left: 32px;
+}
+
+/* Basic styling for buttons */
 button {
   margin: 2px;
   cursor: pointer;
 }
 
-/* Draggable styles */
-[draggable="true"] {
-  /* you can highlight draggable items with a border or background if you want */
-}
-
+/* When dragging over a potential drop target, highlight */
 .drag-over {
   outline: 2px dashed #007bff;
   outline-offset: -4px;
