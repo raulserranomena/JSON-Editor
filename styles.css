@@ -7,7 +7,7 @@ body {
   margin-top: 20px;
 }
 
-/* Basic styling for each item in the JSON tree */
+/* Basic styling for each item */
 .json-item {
   margin-left: 20px;
   position: relative;
@@ -22,23 +22,28 @@ body {
   font-weight: bold;
 }
 
-.json-item .item-header {
-  display: inline-block;
-  margin-bottom: 4px;
-}
-
-/* Indent children */
+/* Children container */
 .json-children {
   margin-left: 32px;
 }
 
-/* Collapsed state hides children */
+/* Collapsed items have hidden children */
 .collapsed > .json-children {
   display: none;
 }
 
-/* Simple styling for buttons */
+/* Buttons */
 button {
   margin: 2px;
   cursor: pointer;
+}
+
+/* Draggable styles */
+[draggable="true"] {
+  /* you can highlight draggable items with a border or background if you want */
+}
+
+.drag-over {
+  outline: 2px dashed #007bff;
+  outline-offset: -4px;
 }
